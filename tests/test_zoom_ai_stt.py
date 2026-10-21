@@ -328,42 +328,50 @@ async def test_disconnect_closes_an_open_turn(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "code, fatal, category",
-    [
-        ("invalid_config", True, ErrorCategory.INVALID_REQUEST),
-        ("UNSUPPORTED_LANGUAGE", True, ErrorCategory.INVALID_REQUEST),
-        ("internal", True, ErrorCategory.UNKNOWN),
-        # Scribe sends this one as non-fatal, but it didn't apply the session.update.
-        ("invalid_config", False, ErrorCategory.INVALID_REQUEST),
-    ],
-)
-async def test_fatal_error_event_is_reported(monkeypatch, code, fatal, category):
+async def test_rejected_session_settings_are_a_permanent_error(monkeypatch):
     service = _live()
     service._websocket = _FakeWebsocket(
-        [_event("error", error={"code": code, "message": "bad things", "fatal": fatal})]
+        [
+            _event("session.created"),
+            _event(
+                "error",
+                error={"code": "invalid_config", "message": "no polishing", "fatal": False},
+            ),
+            _event(
+                "error",
+                error={"code": "missing_config", "message": "send config", "fatal": True},
+            ),
+        ]
     )
     push_error = AsyncMock()
     monkeypatch.setattr(service, "push_error", push_error)
 
     await service._receive_messages()
 
-    assert "bad things" in push_error.await_args.kwargs["error_msg"]
-    assert push_error.await_args.kwargs["category"] == category
+    [non_fatal, fatal] = push_error.await_args_list
+    assert non_fatal.kwargs == {"error_msg": "Zoom Scribe Live error invalid_config: no polishing"}
+    assert fatal.kwargs == {
+        "error_msg": "Zoom Scribe Live error missing_config: send config",
+        "category": ErrorCategory.INVALID_REQUEST,
+    }
 
 
 @pytest.mark.asyncio
-async def test_non_fatal_error_event_is_only_logged(monkeypatch):
+@pytest.mark.parametrize("fatal", [True, False])
+async def test_errors_after_the_session_starts_are_reported(monkeypatch, fatal):
     service = _live()
     service._websocket = _FakeWebsocket(
-        [_event("error", error={"code": "audio_gap", "message": "late audio", "fatal": False})]
+        [
+            _event("session.updated"),
+            _event("error", error={"code": "internal", "message": "bad things", "fatal": fatal}),
+        ]
     )
     push_error = AsyncMock()
     monkeypatch.setattr(service, "push_error", push_error)
 
     await service._receive_messages()
 
-    push_error.assert_not_awaited()
+    push_error.assert_awaited_once_with(error_msg="Zoom Scribe Live error internal: bad things")
 
 
 @pytest.mark.asyncio

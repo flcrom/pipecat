@@ -405,6 +405,7 @@ class ZoomSTTService(WebsocketSTTService):
         self._user_turn_open = False
         self._receive_task = None
         self._session_closed = asyncio.Event()
+        self._session_updated = False  # Scribe accepted this session's settings
         self._awaiting_final = False
         self._input_gap_task = None
         self._last_input_time = time.monotonic()
@@ -603,6 +604,7 @@ class ZoomSTTService(WebsocketSTTService):
             )
             self._websocket = websocket
             self._session_closed.clear()
+            self._session_updated = False
             update = self._session_update()
             self._view = _RequestView.of(update)
             await websocket.send(json.dumps(update))
@@ -670,6 +672,7 @@ class ZoomSTTService(WebsocketSTTService):
                 await self.stop_processing_metrics()
             await self._push_final_transcript(event)
         elif kind == "session.updated":
+            self._session_updated = True
             # Scribe never rejects diarization; it reports whether labels will come.
             if self._view.diarization and event.get("diarization_enabled") is False:
                 logger.warning(f"{self} Scribe can't label speakers for this session")
@@ -682,17 +685,12 @@ class ZoomSTTService(WebsocketSTTService):
 
     async def _handle_error_event(self, error: dict[str, Any]):
         message = f"Zoom Scribe Live error {error.get('code')}: {error.get('message')}"
-        # invalid_config means Scribe didn't apply the session.update (e.g. text polishing
-        # for an unsupported locale), so the session can't work, though Scribe marks it
-        # non-fatal.
-        if not error.get("fatal") and str(error.get("code")).lower() != "invalid_config":
-            logger.warning(f"{self} {message}")
-            return
-        # A config error (e.g. UNSUPPORTED_LANGUAGE) would fail again, so it isn't retried.
-        code = str(error.get("code") or "").upper()
-        is_config_error = "INVALID" in code or "UNSUPPORTED" in code
-        category = ErrorCategory.INVALID_REQUEST if is_config_error else ErrorCategory.UNKNOWN
-        await self.push_error(error_msg=message, category=category)
+        if error.get("fatal") and not self._session_updated:
+            # Scribe rejects a session's settings with a fatal error in place of
+            # session.updated, then closes; a new session would be rejected the same way.
+            await self.push_error(error_msg=message, category=ErrorCategory.INVALID_REQUEST)
+        else:
+            await self.push_error(error_msg=message)
 
     async def _push_interim_transcript(self, event: dict[str, Any]):
         # Each delta holds the item's whole partial text so far, not just the new words.
