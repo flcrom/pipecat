@@ -290,12 +290,6 @@ class ZoomSTTSettings(STTSettings):
     Changing a setting reconnects with a new Scribe session.
 
     Parameters:
-        model: Scribe speech recognition model (``config.model``). ``None``
-            uses Scribe's default model.
-        language_detection: Scribe language detection mode
-            (``config.language_detection.mode``). ``None`` turns it off. A
-            detected language Scribe reports is in ``TranscriptionFrame.language``;
-            when Scribe reports none, it is ``None``.
         silence_duration_ms: Milliseconds of silence that end a turn in Scribe's
             voice activity detection. Defaults to 350, tuned for voice agents;
             lower is faster, higher keeps sentences with longer pauses together.
@@ -306,6 +300,10 @@ class ZoomSTTSettings(STTSettings):
             as ``TranscriptionFrame.result``: ``speaker``, plus ``speaker_segments``
             with each one's span when several speakers spoke. Scribe's speaker
             tags are removed from the transcript text.
+        language_detection: Scribe language detection mode
+            (``config.language_detection.mode``). ``None`` turns it off. A
+            detected language Scribe reports is in ``TranscriptionFrame.language``;
+            when Scribe reports none, it is ``None``.
         vocabulary: Words and phrases that customize recognition
             (``config.vocabulary.phrases``).
         text_polishing: Scribe's text polishing (``outputs.text_polishing``).
@@ -313,11 +311,11 @@ class ZoomSTTSettings(STTSettings):
             the Scribe event attached as ``TranscriptionFrame.result``
             (``transcript``); if polishing fails, the recognized text is used.
             Off by default.
-        extra: Scribe request fields to add or override, shaped like the
-            request, e.g. ``{"config": {"profanity_filter": True}}`` or
-            ``{"outputs": {...}}``. Merged into the ``session.update`` over the settings
-            above, so Scribe fields this service has no setting for can be used.
-            ``audio.format`` stays ``pcm16``.
+
+    ``extra`` holds Scribe request fields this class has no setting for, shaped
+    like the request (e.g. ``{"config": {"profanity_filter": True}}``). It is
+    merged into the ``session.update`` over the settings above, except that
+    ``audio.format`` stays ``pcm16``.
     """
 
     silence_duration_ms: int | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
@@ -734,12 +732,6 @@ class ZoomHttpSTTSettings(STTSettings):
     """Settings for :class:`ZoomHttpSTTService`.
 
     Parameters:
-        model: Scribe speech recognition model (``config.model``). ``None``
-            uses Scribe's default model.
-        language_detection: Scribe language detection mode
-            (``config.language_detection.mode``). ``None`` turns it off. A
-            detected language Scribe reports is in ``TranscriptionFrame.language``;
-            when Scribe reports none, it is ``None``.
         diarization: Whether Scribe labels each transcript segment with a
             speaker. Off by default. The labels are in the segments of the
             Scribe response attached as ``TranscriptionFrame.result``. Scribe's
@@ -750,16 +742,20 @@ class ZoomHttpSTTSettings(STTSettings):
             (``config.channel_separation``). Off by default. Each segment of
             ``TranscriptionFrame.result`` has its ``channel``. The service uploads
             the pipeline's audio as mono, so every segment is channel 0.
+        language_detection: Scribe language detection mode
+            (``config.language_detection.mode``). ``None`` turns it off. A
+            detected language Scribe reports is in ``TranscriptionFrame.language``;
+            when Scribe reports none, it is ``None``.
         vocabulary: Words and phrases that customize recognition
             (``config.vocabulary.phrases``).
         text_polishing: Scribe's text polishing (``outputs.text_polishing``).
             The polished text is the transcript, and the recognized text is in
             ``TranscriptionFrame.result`` (``result.text_display``); if polishing
             fails, the recognized text is used. Off by default.
-        extra: Scribe request fields to add or override, shaped like the
-            request, e.g. ``{"config": {"profanity_filter": True}}`` or
-            ``{"outputs": {...}}``. Merged into the request over the settings
-            above, so Scribe fields this service has no setting for can be used.
+
+    ``extra`` holds Scribe request fields this class has no setting for, shaped
+    like the request (e.g. ``{"config": {"profanity_filter": True}}``). It is
+    merged into the request over the settings above.
     """
 
     diarization: bool | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
