@@ -76,7 +76,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     """
     logger.info("Starting bot")
 
-    stt = ZoomSTTService(api_key=os.environ["ZOOM_SCRIBE_API_KEY"])
+    stt = ZoomSTTService(api_key=os.environ["ZOOM_API_KEY"])
 
     tts = CartesiaTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],

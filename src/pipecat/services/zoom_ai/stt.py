@@ -346,7 +346,7 @@ class ZoomSTTService(WebsocketSTTService):
     Example::
 
         stt = ZoomSTTService(
-            api_key=os.getenv("ZOOM_SCRIBE_API_KEY"),
+            api_key=os.getenv("ZOOM_API_KEY"),
             settings=ZoomSTTService.Settings(language=Language.EN_US),
         )
     """
@@ -779,7 +779,7 @@ class ZoomHttpSTTService(SegmentedSTTService):
 
     Example::
 
-        stt = ZoomHttpSTTService(api_key=os.getenv("ZOOM_SCRIBE_API_KEY"))
+        stt = ZoomHttpSTTService(api_key=os.getenv("ZOOM_API_KEY"))
     """
 
     Settings = ZoomHttpSTTSettings

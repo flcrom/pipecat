@@ -88,7 +88,6 @@ IMPORTS = {
     "whisper_stt": ["from pipecat.services.whisper.stt import WhisperSTTService"],
     "xai_stt": ["from pipecat.services.xai.stt import XAISTTService"],
     "zoom_stt": ["from pipecat.services.zoom_ai.stt import ZoomSTTService"],
-    "zoom_http_stt": ["from pipecat.services.zoom_ai.stt import ZoomHttpSTTService"],
     # LLM Services
     "anthropic_llm": ["from pipecat.services.anthropic.llm import AnthropicLLMService"],
     "aws_bedrock_llm": ["from pipecat.services.aws.llm import AWSBedrockLLMService"],

@@ -501,15 +501,7 @@ class ServiceRegistry:
             label="Zoom",
             package="pipecat-ai[zoom-ai]",
             class_name=["ZoomSTTService"],
-            env_prefix="ZOOM_SCRIBE",
-            include_params=["api_key"],
-        ),
-        ServiceDefinition(
-            value="zoom_http_stt",
-            label="Zoom (HTTP)",
-            package="pipecat-ai[zoom-ai]",
-            class_name=["ZoomHttpSTTService"],
-            env_prefix="ZOOM_SCRIBE",
+            env_prefix="ZOOM",
             include_params=["api_key"],
         ),
     ]
