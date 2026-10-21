@@ -40,6 +40,7 @@ from pipecat.frames.frames import (
     EndFrame,
     ErrorFrame,
     Frame,
+    InterimTranscriptionFrame,
     ProposedUserStartedSpeakingFrame,
     ProposedUserStoppedSpeakingFrame,
     STTMetadataFrame,
@@ -306,7 +307,9 @@ class ZoomSTTSettings(STTSettings):
             The polished text is the transcript, and the recognized text is in
             the Scribe event attached as ``TranscriptionFrame.result``
             (``transcript``); if polishing fails, the recognized text is used.
-            Off by default.
+            Interim transcriptions carry the recognized text. Off by default.
+        interim_results: Whether Scribe sends partial results before each final
+            transcript, pushed as :class:`InterimTranscriptionFrame`. On by default.
 
     ``extra`` holds Scribe request fields this class has no setting for, shaped
     like the request (e.g. ``{"config": {"profanity_filter": True}}``). It is
@@ -319,6 +322,7 @@ class ZoomSTTSettings(STTSettings):
     language_detection: str | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
     vocabulary: list[str] | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
     text_polishing: bool | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
+    interim_results: bool | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
 
 
 class ZoomSTTService(WebsocketSTTService):
@@ -332,7 +336,9 @@ class ZoomSTTService(WebsocketSTTService):
     :class:`ProposedUserStoppedSpeakingFrame`. ``service_metadata_frame()``
     recommends :class:`~pipecat.turns.user_turn_strategies.ExternalUserTurnStrategies`
     so the user aggregator resolves those proposals instead of running local
-    VAD. Scribe Live returns final transcripts only. A transcript that arrives
+    VAD. With ``Settings.interim_results`` on (the default), Scribe's partial
+    results arrive before each final transcript and are pushed as
+    :class:`InterimTranscriptionFrame`. A transcript that arrives
     without a preceding ``speech_started`` (for example right after a
     reconnect) opens its own turn, so it is never dropped; a turn whose
     transcript comes back empty ends with no transcription.
@@ -378,6 +384,7 @@ class ZoomSTTService(WebsocketSTTService):
             language_detection=None,
             vocabulary=None,
             text_polishing=False,
+            interim_results=True,
         )
         if settings is not None:
             default_settings.apply_update(settings)
@@ -543,6 +550,8 @@ class ZoomSTTService(WebsocketSTTService):
             "audio": {"format": "pcm16"},
         }
         config = _recognition_config(self._settings)
+        if self._settings.interim_results:
+            config["interim_results"] = True
         if config:
             update["config"] = config
         if self._settings.silence_duration_ms is not None:
@@ -653,6 +662,8 @@ class ZoomSTTService(WebsocketSTTService):
             # Processing time: from Scribe's end of speech to its final transcript.
             self._awaiting_final = True
             await self.start_processing_metrics()
+        elif kind == "transcription.delta":
+            await self._push_interim_transcript(event)
         elif kind == "transcription.completed":
             if self._awaiting_final:
                 self._awaiting_final = False
@@ -682,6 +693,24 @@ class ZoomSTTService(WebsocketSTTService):
         is_config_error = "INVALID" in code or "UNSUPPORTED" in code
         category = ErrorCategory.INVALID_REQUEST if is_config_error else ErrorCategory.UNKNOWN
         await self.push_error(error_msg=message, category=category)
+
+    async def _push_interim_transcript(self, event: dict[str, Any]):
+        # Each delta holds the item's whole partial text so far, not just the new words.
+        text = _clean(event.get("delta"))
+        if not text:
+            return
+        language = _reported_language(
+            event.get("language"), self._view.language_detection, self._settings.language
+        )
+        await self.push_frame(
+            InterimTranscriptionFrame(
+                text=text,
+                user_id=self._user_id,
+                timestamp=time_now_iso8601(),
+                language=language,
+                result=event,
+            )
+        )
 
     async def _push_final_transcript(self, event: dict[str, Any]):
         text = _clean(event.get("transcript"))

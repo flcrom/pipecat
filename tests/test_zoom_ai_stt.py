@@ -20,6 +20,7 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     ErrorFrame,
+    InterimTranscriptionFrame,
     ProposedUserStartedSpeakingFrame,
     ProposedUserStoppedSpeakingFrame,
     TranscriptionFrame,
@@ -115,6 +116,7 @@ async def test_connect_sends_the_session_update(monkeypatch):
     assert json.loads(websocket.sent[0]) == {
         "type": "session.update",
         "language": "en-US",
+        "config": {"interim_results": True},
         "audio": {"format": "pcm16"},
         "turn_detection": {"silence_duration_ms": 350},
     }
@@ -242,6 +244,39 @@ async def test_scribe_turn_brackets_the_final_transcript(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_partial_results_are_pushed_as_interim_transcriptions(monkeypatch):
+    service = _live()
+    service._websocket = _FakeWebsocket(
+        [
+            _event("input_audio_buffer.speech_started", item_id="item_1"),
+            _event("transcription.delta", item_id="item_1", delta="[Speaker 1] I think it"),
+            _event("transcription.delta", item_id="item_1", delta=""),
+            _event("transcription.delta", item_id="item_1", delta="I think it might be Paris"),
+            _event("input_audio_buffer.speech_stopped", item_id="item_1"),
+            _event("transcription.completed", item_id="item_1", transcript="I think it's Paris."),
+        ]
+    )
+    frames = _record_frames(monkeypatch, service)
+
+    await service._receive_messages()
+
+    assert [f if isinstance(f, type) else type(f) for f in frames] == [
+        ProposedUserStartedSpeakingFrame,
+        InterimTranscriptionFrame,
+        InterimTranscriptionFrame,
+        TranscriptionFrame,
+        ProposedUserStoppedSpeakingFrame,
+    ]
+    assert [f.text for f in frames[1:4]] == [
+        "I think it",
+        "I think it might be Paris",
+        "I think it's Paris.",
+    ]
+    assert frames[1].language is Language.EN_US
+    assert frames[1].result["item_id"] == "item_1"
+
+
+@pytest.mark.asyncio
 async def test_repeated_speech_start_opens_one_turn(monkeypatch):
     service = _live()
     service._websocket = _FakeWebsocket(
@@ -355,9 +390,20 @@ async def test_live_diarization_is_requested_only_when_on(monkeypatch):
         "type": "session.update",
         "language": "en-US",
         "audio": {"format": "pcm16"},
-        "config": {"diarization": True},
+        "config": {"interim_results": True, "diarization": True},
         "turn_detection": {"silence_duration_ms": 350},
     }
+
+
+@pytest.mark.asyncio
+async def test_live_interim_results_can_be_turned_off(monkeypatch):
+    websocket = _FakeWebsocket()
+    _patch_connect(monkeypatch, websocket)
+    service = _live(settings=ZoomSTTService.Settings(interim_results=False))
+
+    await service._connect_websocket()
+
+    assert "config" not in json.loads(websocket.sent[0])
 
 
 @pytest.mark.asyncio
@@ -378,6 +424,7 @@ async def test_live_recognition_options_are_requested_only_when_set(monkeypatch)
 
     update = json.loads(websocket.sent[0])
     assert update["config"] == {
+        "interim_results": True,
         "model": "zoom-scribe-multilingual",
         "language_detection": {"mode": "continuous"},
         "profanity_filter": True,
@@ -401,7 +448,11 @@ async def test_live_extra_is_merged_into_the_session_update(monkeypatch):
     await service._connect_websocket()
 
     update = json.loads(websocket.sent[0])
-    assert update["config"] == {"diarization": False, "vocabulary_id": "acct_vocab_1"}
+    assert update["config"] == {
+        "interim_results": True,
+        "diarization": False,
+        "vocabulary_id": "acct_vocab_1",
+    }
     assert update["turn_detection"] == {
         "silence_duration_ms": 350,
         "max_segment_duration_ms": 15000,
@@ -799,7 +850,7 @@ async def test_settings_change_reconnects_with_the_new_config(monkeypatch):
     await service._connect_websocket()
 
     update = json.loads(websocket.sent[-1])
-    assert update["config"] == {"diarization": True}
+    assert update["config"] == {"interim_results": True, "diarization": True}
     assert update["turn_detection"] == {"silence_duration_ms": 500}
     assert not service._session_closed.is_set()  # stop() waits again on the new session
 
