@@ -14,6 +14,9 @@ import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
+from websockets.datastructures import Headers
+from websockets.exceptions import InvalidStatus
+from websockets.http11 import Response
 from websockets.protocol import State
 
 from pipecat.frames.frames import (
@@ -923,6 +926,44 @@ async def test_failed_first_connect_still_starts_the_receive_loop(monkeypatch):
     assert service._websocket is None
     # The receive loop owns reconnecting, so it must run even without a socket.
     assert "receive" in started
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            b'{"code":124, "message":"Invalid Access token"}',
+            "Zoom refused the connection (HTTP 401): Invalid Access token",
+        ),
+        (
+            b"",
+            "Unable to connect to Zoom Scribe Live: server rejected WebSocket connection: HTTP 401",
+        ),
+    ],
+)
+async def test_refused_handshake_reports_zoom_reason(monkeypatch, body, expected):
+    refusal = InvalidStatus(Response(401, "Unauthorized", Headers(), body))
+
+    async def refuse(*args, **kwargs):
+        raise refusal
+
+    monkeypatch.setattr("pipecat.services.websocket_service.websocket_connect", refuse)
+    service = _live()
+    push_error = AsyncMock()
+    monkeypatch.setattr(service, "push_error", push_error)
+    connection_errors = []
+
+    @service.event_handler("on_connection_error")
+    async def on_connection_error(service, error):
+        connection_errors.append(error)
+
+    await service._connect_websocket()
+    # Event handlers run as background tasks; let it finish.
+    await asyncio.sleep(0)
+
+    push_error.assert_awaited_once_with(error_msg=expected, exception=refusal)
+    assert connection_errors == [expected.removeprefix("Unable to connect to Zoom Scribe Live: ")]
 
 
 # Scribe Fast

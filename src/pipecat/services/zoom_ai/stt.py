@@ -32,6 +32,7 @@ from urllib.parse import urlparse
 
 import aiohttp
 from loguru import logger
+from websockets.exceptions import InvalidStatus
 from websockets.protocol import State
 
 from pipecat import version as pipecat_version
@@ -84,6 +85,23 @@ def _headers(api_key: str) -> dict[str, str]:
         "User-Agent": f"pipecat/{pipecat_version()}",
         "x-zm-trackingid": f"zoom_ai_community_integration_pipecat_{uuid.uuid4()}",
     }
+
+
+def _describe_refusal(exception: Exception) -> str | None:
+    """Describe Zoom refusing the handshake, if that is what failed.
+
+    Zoom explains a refusal (a bad API key, say) in the JSON response body,
+    which the exception's own message leaves out.
+    """
+    if isinstance(exception, InvalidStatus):
+        response = exception.response
+        try:
+            reason = json.loads(response.body).get("message")
+        except (TypeError, ValueError, AttributeError):  # no body, or not a JSON object
+            reason = None
+        if reason:
+            return f"Zoom refused the connection (HTTP {response.status_code}): {reason}"
+    return None
 
 
 def _check_url(url: str, name: str) -> str:
@@ -611,9 +629,11 @@ class ZoomSTTService(WebsocketSTTService):
             await self._call_event_handler("on_connected")
         except Exception as e:
             self._websocket = None
+            refusal = _describe_refusal(e)
             await self.push_error(
-                error_msg=f"Unable to connect to Zoom Scribe Live: {e}", exception=e
+                error_msg=refusal or f"Unable to connect to Zoom Scribe Live: {e}", exception=e
             )
+            await self._call_event_handler("on_connection_error", refusal or f"{e}")
 
     async def _disconnect_websocket(self):
         if not self._websocket:
