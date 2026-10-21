@@ -55,9 +55,6 @@ from pipecat.utils.time import time_now_iso8601
 from pipecat.utils.tracing.service_decorators import traced_stt
 from pipecat.utils.types import NOT_GIVEN, NotGiven
 
-LIVE_URL = "wss://api.zoom.us/v2/aiservices/scribe/live"
-FAST_URL = "https://api.zoom.us/v2/aiservices/scribe/transcribe"
-
 # Scribe Live accepts 16 kHz mono PCM16 only.
 SCRIBE_SAMPLE_RATE = 16000
 # 50 ms of audio per WebSocket message. The docs suggest about 100 ms; smaller
@@ -67,7 +64,6 @@ SEND_CHUNK_BYTES = SCRIBE_SAMPLE_RATE * 2 // 20
 DEFAULT_SILENCE_DURATION_MS = 350
 # How long stop() waits for Scribe to send the last transcript and session.closed.
 SESSION_CLOSE_TIMEOUT_SECS = 2.0
-TRACKING_ID_PREFIX = "zoom_ai_community_integration_pipecat_"
 # When input stops mid-turn (e.g. the user muted), Scribe's VAD hears no silence and
 # the turn stays open. After this long without input, send enough silence to end it.
 INPUT_GAP_SECS = 1.0
@@ -85,7 +81,7 @@ def _headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
         "User-Agent": f"pipecat/{pipecat_version()}",
-        "x-zm-trackingid": f"{TRACKING_ID_PREFIX}{uuid.uuid4()}",
+        "x-zm-trackingid": f"zoom_ai_community_integration_pipecat_{uuid.uuid4()}",
     }
 
 
@@ -356,7 +352,7 @@ class ZoomSTTService(WebsocketSTTService):
         self,
         *,
         api_key: str,
-        url: str = LIVE_URL,
+        url: str = "wss://api.zoom.us/v2/aiservices/scribe/live",
         sample_rate: int | None = None,
         should_interrupt: bool = True,
         settings: Settings | None = None,
@@ -785,7 +781,7 @@ class ZoomHttpSTTService(SegmentedSTTService):
         self,
         *,
         api_key: str,
-        url: str = FAST_URL,
+        url: str = "https://api.zoom.us/v2/aiservices/scribe/transcribe",
         aiohttp_session: aiohttp.ClientSession | None = None,
         timeout_secs: float = 10.0,
         settings: Settings | None = None,
