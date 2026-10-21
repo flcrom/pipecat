@@ -911,6 +911,23 @@ async def test_failed_first_connect_still_starts_the_receive_loop(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_clears_a_previous_disconnect_before_connecting(monkeypatch):
+    service = _live()
+    service._disconnecting = True  # left set by the disconnect half of a reconnect
+    disconnecting_while_connecting = []
+
+    async def connect_websocket():
+        disconnecting_while_connecting.append(service._disconnecting)
+
+    monkeypatch.setattr(service, "_connect_websocket", connect_websocket)
+    monkeypatch.setattr(service, "create_task", lambda coro, name=None: coro.close())
+
+    await service._connect()
+
+    assert disconnecting_while_connecting == [False]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("body", "expected"),
     [

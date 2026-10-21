@@ -588,8 +588,8 @@ class ZoomSTTService(WebsocketSTTService):
         return update
 
     async def _connect(self):
-        await self._connect_websocket()
         await super()._connect()
+        await self._connect_websocket()
         # Started even when the connection failed: with no socket the receive
         # loop goes straight to its reconnect path, which retries the connect.
         if not self._receive_task:
