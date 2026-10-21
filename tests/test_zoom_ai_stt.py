@@ -780,7 +780,7 @@ async def test_empty_transcript_ends_the_turn_without_a_transcription(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_processing_metrics_span_end_of_speech_to_final(monkeypatch):
+async def test_live_reports_no_processing_metrics(monkeypatch):
     service = _live()
     service._websocket = _FakeWebsocket(
         [
@@ -790,17 +790,14 @@ async def test_processing_metrics_span_end_of_speech_to_final(monkeypatch):
         ]
     )
     _record_frames(monkeypatch, service)
-    calls = []
-    monkeypatch.setattr(
-        service, "start_processing_metrics", AsyncMock(side_effect=lambda: calls.append("start"))
-    )
-    monkeypatch.setattr(
-        service, "stop_processing_metrics", AsyncMock(side_effect=lambda: calls.append("stop"))
-    )
+    start, stop = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(service, "start_processing_metrics", start)
+    monkeypatch.setattr(service, "stop_processing_metrics", stop)
 
     await service._receive_messages()
 
-    assert calls == ["start", "stop"]
+    start.assert_not_awaited()
+    stop.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -864,21 +861,6 @@ async def test_settings_change_reconnects_with_the_new_config(monkeypatch):
     assert update["config"] == {"interim_results": True, "diarization": True}
     assert update["turn_detection"] == {"silence_duration_ms": 500}
     assert not service._session_closed.is_set()  # stop() waits again on the new session
-
-
-@pytest.mark.asyncio
-async def test_processing_metrics_only_stop_after_they_started(monkeypatch):
-    service = _live()
-    service._websocket = _FakeWebsocket(
-        [_event("transcription.completed", item_id="item_1", transcript="Hi.")]
-    )
-    _record_frames(monkeypatch, service)
-    stop = AsyncMock()
-    monkeypatch.setattr(service, "stop_processing_metrics", stop)
-
-    await service._receive_messages()  # no speech_stopped, e.g. lost in a reconnect
-
-    stop.assert_not_awaited()
 
 
 @pytest.mark.asyncio
