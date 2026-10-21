@@ -8,10 +8,10 @@
 
 Two services, matching the two Scribe processing modes:
 
-- :class:`ZoomScribeLiveSTTService` (Scribe Live): streaming recognition over a
+- :class:`ZoomSTTService` (Scribe Live): streaming recognition over a
   WebSocket. Scribe's own voice activity detection ends each turn and returns
   its final transcript.
-- :class:`ZoomScribeFastSTTService` (Scribe Fast): one HTTP request per
+- :class:`ZoomHttpSTTService` (Scribe Fast): one HTTP request per
   utterance, segmented by the pipeline's VAD.
 
 Settings map to the Scribe API fields of the same name. For what each feature
@@ -212,7 +212,7 @@ _LANGUAGE_MAP = {
 }
 
 
-def language_to_zoom_scribe_language(language: Language) -> str:
+def language_to_zoom_language(language: Language) -> str:
     """Convert a Language to a Scribe locale, e.g. ``Language.EN`` to ``"en-US"``.
 
     Args:
@@ -235,8 +235,8 @@ def language_to_zoom_scribe_language(language: Language) -> str:
 
 
 @dataclass
-class ZoomScribeLiveSTTSettings(STTSettings):
-    """Settings for :class:`ZoomScribeLiveSTTService`.
+class ZoomSTTSettings(STTSettings):
+    """Settings for :class:`ZoomSTTService`.
 
     Changing a setting reconnects with a new Scribe session.
 
@@ -278,7 +278,7 @@ class ZoomScribeLiveSTTSettings(STTSettings):
     text_polishing: bool | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
 
 
-class ZoomScribeLiveSTTService(WebsocketSTTService):
+class ZoomSTTService(WebsocketSTTService):
     """Zoom Scribe Live streaming speech-to-text service.
 
     Streams 16 kHz PCM16 audio to Scribe Live over a WebSocket. Scribe's own
@@ -296,13 +296,13 @@ class ZoomScribeLiveSTTService(WebsocketSTTService):
 
     Example::
 
-        stt = ZoomScribeLiveSTTService(
+        stt = ZoomSTTService(
             api_key=os.getenv("ZOOM_SCRIBE_API_KEY"),
-            settings=ZoomScribeLiveSTTService.Settings(language=Language.EN_US),
+            settings=ZoomSTTService.Settings(language=Language.EN_US),
         )
     """
 
-    Settings = ZoomScribeLiveSTTSettings
+    Settings = ZoomSTTSettings
     _settings: Settings
 
     def __init__(
@@ -380,7 +380,7 @@ class ZoomScribeLiveSTTService(WebsocketSTTService):
             The Scribe locale. Regional variants Scribe doesn't list resolve to
             the locale of their base language.
         """
-        return language_to_zoom_scribe_language(language)
+        return language_to_zoom_language(language)
 
     @property
     def supports_ttfs(self) -> bool:
@@ -681,8 +681,8 @@ class ZoomScribeLiveSTTService(WebsocketSTTService):
 
 
 @dataclass
-class ZoomScribeFastSTTSettings(STTSettings):
-    """Settings for :class:`ZoomScribeFastSTTService`.
+class ZoomHttpSTTSettings(STTSettings):
+    """Settings for :class:`ZoomHttpSTTService`.
 
     Parameters:
         model: Scribe speech recognition model (``config.model``). ``None``
@@ -721,7 +721,7 @@ class ZoomScribeFastSTTSettings(STTSettings):
     text_polishing: bool | None | NotGiven = field(default_factory=lambda: NOT_GIVEN)
 
 
-class ZoomScribeFastSTTService(SegmentedSTTService):
+class ZoomHttpSTTService(SegmentedSTTService):
     """Zoom Scribe Fast speech-to-text service.
 
     Transcribes one utterance per HTTP request. The pipeline's VAD cuts the
@@ -730,10 +730,10 @@ class ZoomScribeFastSTTService(SegmentedSTTService):
 
     Example::
 
-        stt = ZoomScribeFastSTTService(api_key=os.getenv("ZOOM_SCRIBE_API_KEY"))
+        stt = ZoomHttpSTTService(api_key=os.getenv("ZOOM_SCRIBE_API_KEY"))
     """
 
-    Settings = ZoomScribeFastSTTSettings
+    Settings = ZoomHttpSTTSettings
     _settings: Settings
 
     def __init__(
@@ -805,7 +805,7 @@ class ZoomScribeFastSTTService(SegmentedSTTService):
             The Scribe locale. Regional variants Scribe doesn't list resolve to
             the locale of their base language.
         """
-        return language_to_zoom_scribe_language(language)
+        return language_to_zoom_language(language)
 
     async def cleanup(self):
         """Close the HTTP session if the service created it."""

@@ -27,8 +27,8 @@ from pipecat.frames.frames import (
 from pipecat.services.zoom_ai import stt as zoom_stt
 from pipecat.services.zoom_ai.stt import (
     SEND_CHUNK_BYTES,
-    ZoomScribeFastSTTService,
-    ZoomScribeLiveSTTService,
+    ZoomHttpSTTService,
+    ZoomSTTService,
 )
 from pipecat.transcriptions.language import Language
 from pipecat.turns.user_turn_strategies import ExternalUserTurnStrategies
@@ -72,8 +72,8 @@ def _patch_connect(monkeypatch, websocket: _FakeWebsocket) -> list[dict]:
     return calls
 
 
-def _live(sample_rate: int = 16000, **kwargs) -> ZoomScribeLiveSTTService:
-    service = ZoomScribeLiveSTTService(api_key="test-key", **kwargs)
+def _live(sample_rate: int = 16000, **kwargs) -> ZoomSTTService:
+    service = ZoomSTTService(api_key="test-key", **kwargs)
     # sample_rate is normally set when the pipeline starts, which these tests skip.
     service._sample_rate = sample_rate
     return service
@@ -131,9 +131,7 @@ async def test_connect_sends_the_session_update(monkeypatch):
 async def test_silence_duration_setting(monkeypatch, silence_duration_ms, expected):
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
-    service = _live(
-        settings=ZoomScribeLiveSTTService.Settings(silence_duration_ms=silence_duration_ms)
-    )
+    service = _live(settings=ZoomSTTService.Settings(silence_duration_ms=silence_duration_ms))
 
     await service._connect_websocket()
 
@@ -144,7 +142,7 @@ async def test_silence_duration_setting(monkeypatch, silence_duration_ms, expect
 async def test_language_setting_maps_to_a_scribe_locale(monkeypatch):
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(language=Language.DE_DE))
+    service = _live(settings=ZoomSTTService.Settings(language=Language.DE_DE))
 
     await service._connect_websocket()
 
@@ -174,12 +172,12 @@ async def test_input_gap_mid_turn_sends_silence_to_end_it(monkeypatch, turn_open
 def test_plaintext_urls_warn_except_for_localhost(monkeypatch):
     warnings = []
     monkeypatch.setattr(zoom_stt.logger, "warning", lambda msg, *a, **k: warnings.append(msg))
-    ZoomScribeLiveSTTService(api_key="test-key", url="ws://scribe.example.com/live")
-    ZoomScribeFastSTTService(api_key="test-key", url="http://scribe.example.com/transcribe")
+    ZoomSTTService(api_key="test-key", url="ws://scribe.example.com/live")
+    ZoomHttpSTTService(api_key="test-key", url="http://scribe.example.com/transcribe")
     assert len(warnings) == 2 and all("not encrypted" in w for w in warnings)
     warnings.clear()
-    ZoomScribeLiveSTTService(api_key="test-key", url="ws://localhost:8080/live")
-    ZoomScribeLiveSTTService(api_key="test-key")
+    ZoomSTTService(api_key="test-key", url="ws://localhost:8080/live")
+    ZoomSTTService(api_key="test-key")
     assert warnings == []
 
 
@@ -339,7 +337,7 @@ async def test_settings_change_reconnects(monkeypatch):
     reconnect = AsyncMock()
     monkeypatch.setattr(service, "_request_reconnect", reconnect)
 
-    await service._update_settings(ZoomScribeLiveSTTService.Settings(language=Language.JA_JP))
+    await service._update_settings(ZoomSTTService.Settings(language=Language.JA_JP))
 
     assert service._settings.language == "ja-JP"
     reconnect.assert_awaited_once()
@@ -349,7 +347,7 @@ async def test_settings_change_reconnects(monkeypatch):
 async def test_live_diarization_is_requested_only_when_on(monkeypatch):
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(diarization=True))
+    service = _live(settings=ZoomSTTService.Settings(diarization=True))
 
     await service._connect_websocket()
 
@@ -367,7 +365,7 @@ async def test_live_recognition_options_are_requested_only_when_set(monkeypatch)
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
     service = _live(
-        settings=ZoomScribeLiveSTTService.Settings(
+        settings=ZoomSTTService.Settings(
             model="zoom-scribe-multilingual",
             language_detection="continuous",
             vocabulary=["Pipecat", "LiveKit"],
@@ -398,7 +396,7 @@ async def test_live_extra_is_merged_into_the_session_update(monkeypatch):
         "outputs": {"future_output": {"enabled": True}},
         "audio": {"format": "opus"},  # the service sends PCM16, so this is kept
     }
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(diarization=True, extra=extra))
+    service = _live(settings=ZoomSTTService.Settings(diarization=True, extra=extra))
 
     await service._connect_websocket()
 
@@ -418,9 +416,7 @@ async def test_live_acts_on_settings_given_through_extra(monkeypatch):
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
     service = _live(
-        settings=ZoomScribeLiveSTTService.Settings(
-            extra={"outputs": {"text_polishing": {"enabled": True}}}
-        )
+        settings=ZoomSTTService.Settings(extra={"outputs": {"text_polishing": {"enabled": True}}})
     )
     await service._connect_websocket()
     update = json.loads(websocket.sent[0])
@@ -446,7 +442,7 @@ async def test_live_acts_on_settings_given_through_extra(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_live_frame_language_is_none_when_detection_reports_none(monkeypatch):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(language_detection="continuous"))
+    service = _live(settings=ZoomSTTService.Settings(language_detection="continuous"))
     service._websocket = _FakeWebsocket(
         [_event("transcription.completed", item_id="item_1", transcript="Hola.")]
     )
@@ -460,7 +456,7 @@ async def test_live_frame_language_is_none_when_detection_reports_none(monkeypat
 
 @pytest.mark.asyncio
 async def test_live_frames_carry_the_detected_language(monkeypatch):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(language_detection="continuous"))
+    service = _live(settings=ZoomSTTService.Settings(language_detection="continuous"))
     service._websocket = _FakeWebsocket(
         [
             _event(
@@ -488,7 +484,7 @@ async def test_live_frames_carry_the_detected_language(monkeypatch):
     ],
 )
 async def test_live_polished_text_edge_cases(monkeypatch, polished, expected):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(text_polishing=True))
+    service = _live(settings=ZoomSTTService.Settings(text_polishing=True))
     service._websocket = _FakeWebsocket(
         [
             _event(
@@ -509,7 +505,7 @@ async def test_live_polished_text_edge_cases(monkeypatch, polished, expected):
 
 @pytest.mark.asyncio
 async def test_live_text_polishing_pushes_the_polished_text(monkeypatch):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(text_polishing=True))
+    service = _live(settings=ZoomSTTService.Settings(text_polishing=True))
     service._websocket = _FakeWebsocket(
         [
             _event(
@@ -531,7 +527,7 @@ async def test_live_text_polishing_pushes_the_polished_text(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_live_speaker_labels_stay_in_the_raw_result(monkeypatch):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(diarization=True))
+    service = _live(settings=ZoomSTTService.Settings(diarization=True))
     spans = [  # sent only when the speaker changed mid-utterance
         {"speaker": "Speaker 1", "transcript": "Hi", "audio_start_ms": 0, "audio_end_ms": 500},
         {"speaker": "Speaker 2", "transcript": "fine", "audio_start_ms": 500, "audio_end_ms": 900},
@@ -572,7 +568,7 @@ async def test_live_speaker_labels_stay_in_the_raw_result(monkeypatch):
 async def test_live_warns_when_scribe_cannot_diarize(
     monkeypatch, diarization, diarization_enabled, warned
 ):
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(diarization=diarization))
+    service = _live(settings=ZoomSTTService.Settings(diarization=diarization))
     fields = {} if diarization_enabled is None else {"diarization_enabled": diarization_enabled}
     service._websocket = _FakeWebsocket([_event("session.updated", **fields)])
     warning = MagicMock()
@@ -602,7 +598,7 @@ def test_metadata_recommends_external_turn_strategies(should_interrupt):
 async def test_base_languages_map_to_a_scribe_locale(monkeypatch, language, locale):
     websocket = _FakeWebsocket()
     _patch_connect(monkeypatch, websocket)
-    service = _live(settings=ZoomScribeLiveSTTService.Settings(language=language))
+    service = _live(settings=ZoomSTTService.Settings(language=language))
 
     await service._connect_websocket()
 
@@ -612,10 +608,10 @@ async def test_base_languages_map_to_a_scribe_locale(monkeypatch, language, loca
 @pytest.mark.parametrize("language", [Language.EN_GB, Language.KO_KR, Language.XH])
 def test_unsupported_language_points_to_the_docs(language):
     with pytest.raises(ValueError, match="supported-languages"):
-        _live(settings=ZoomScribeLiveSTTService.Settings(language=language))
+        _live(settings=ZoomSTTService.Settings(language=language))
     with pytest.raises(ValueError, match="supported-languages"):
-        ZoomScribeFastSTTService(
-            api_key="test-key", settings=ZoomScribeFastSTTService.Settings(language=language)
+        ZoomHttpSTTService(
+            api_key="test-key", settings=ZoomHttpSTTService.Settings(language=language)
         )
 
 
@@ -746,7 +742,7 @@ async def test_settings_change_waits_for_the_scribe_turn_to_end(monkeypatch):
     monkeypatch.setattr(service, "_reconnect", reconnect)
 
     await service._receive_messages()  # Scribe heard speech; no local VAD in this pipeline
-    await service._update_settings(ZoomScribeLiveSTTService.Settings(language=Language.JA_JP))
+    await service._update_settings(ZoomSTTService.Settings(language=Language.JA_JP))
 
     reconnect.assert_not_awaited()
     assert service._need_reconnect  # runs when the aggregator ends the turn
@@ -767,7 +763,7 @@ async def test_held_settings_change_applies_when_the_scribe_turn_ends(monkeypatc
     monkeypatch.setattr(service, "create_task", lambda coro, name=None: scheduled.append(coro))
 
     await service._receive_messages()
-    await service._update_settings(ZoomScribeLiveSTTService.Settings(silence_duration_ms=500))
+    await service._update_settings(ZoomSTTService.Settings(silence_duration_ms=500))
     reconnect.assert_not_called()
 
     await service._handle_event({"type": "transcription.completed", "transcript": ""})
@@ -787,7 +783,7 @@ async def test_settings_change_reconnects_with_the_new_config(monkeypatch):
     await service._connect_websocket()
     await service._disconnect_websocket()
     service._settings.apply_update(
-        ZoomScribeLiveSTTService.Settings(silence_duration_ms=500, diarization=True)
+        ZoomSTTService.Settings(silence_duration_ms=500, diarization=True)
     )
     websocket.state = State.OPEN
     await service._connect_websocket()
@@ -896,7 +892,7 @@ async def _run_fast(fake: _ScribeFast, **kwargs) -> list:
     await server.start_server()
     try:
         async with aiohttp.ClientSession() as session:
-            service = ZoomScribeFastSTTService(
+            service = ZoomHttpSTTService(
                 api_key="test-key",
                 url=str(server.make_url("/transcribe")),
                 aiohttp_session=session,
@@ -945,7 +941,7 @@ async def test_fast_diarization_and_language_are_sent():
     fake = _ScribeFast(body=_FAST_RESULT)
 
     await _run_fast(
-        fake, settings=ZoomScribeFastSTTService.Settings(language=Language.FR_FR, diarization=True)
+        fake, settings=ZoomHttpSTTService.Settings(language=Language.FR_FR, diarization=True)
     )
 
     assert fake.requests[0]["config"] == {"language": "fr-FR", "diarization": True}
@@ -966,7 +962,7 @@ async def test_fast_speaker_labels_stay_in_the_raw_result():
     }
 
     [frame] = await _run_fast(
-        _ScribeFast(body=body), settings=ZoomScribeFastSTTService.Settings(diarization=True)
+        _ScribeFast(body=body), settings=ZoomHttpSTTService.Settings(diarization=True)
     )
 
     assert frame.text == "Hi. We built it."
@@ -984,7 +980,7 @@ async def test_fast_recognition_options_and_text_polishing():
 
     [frame] = await _run_fast(
         fake,
-        settings=ZoomScribeFastSTTService.Settings(
+        settings=ZoomHttpSTTService.Settings(
             model="zoom-scribe-en-pro",
             language_detection="once",
             vocabulary=["Pipecat"],
@@ -1022,7 +1018,7 @@ async def test_fast_frame_carries_the_detected_language(result, detection, expec
 
     [frame] = await _run_fast(
         _ScribeFast(body=body),
-        settings=ZoomScribeFastSTTService.Settings(language_detection=detection),
+        settings=ZoomHttpSTTService.Settings(language_detection=detection),
     )
 
     assert frame.language is expected
@@ -1034,7 +1030,7 @@ async def test_fast_extra_becomes_request_fields():
 
     await _run_fast(
         fake,
-        settings=ZoomScribeFastSTTService.Settings(
+        settings=ZoomHttpSTTService.Settings(
             extra={
                 "config": {"segmentation_mode": "none"},
                 "outputs": {"future_output": {"enabled": True}},
@@ -1058,7 +1054,7 @@ async def test_fast_word_time_offsets_are_requested_only_when_on():
     off, on = _ScribeFast(body=_FAST_RESULT), _ScribeFast(body=_FAST_RESULT)
 
     await _run_fast(off)
-    await _run_fast(on, settings=ZoomScribeFastSTTService.Settings(word_time_offsets=True))
+    await _run_fast(on, settings=ZoomHttpSTTService.Settings(word_time_offsets=True))
 
     assert "word_time_offsets" not in off.requests[0]["config"]
     assert on.requests[0]["config"]["word_time_offsets"] is True
@@ -1098,7 +1094,7 @@ async def test_fast_non_json_response_is_an_error():
     await server.start_server()
     try:
         async with aiohttp.ClientSession() as session:
-            service = ZoomScribeFastSTTService(
+            service = ZoomHttpSTTService(
                 api_key="test-key", url=str(server.make_url("/transcribe")), aiohttp_session=session
             )
             [frame] = [f async for f in service.run_stt(b"RIFF0000WAVE")]
@@ -1111,7 +1107,7 @@ async def test_fast_non_json_response_is_an_error():
 @pytest.mark.asyncio
 async def test_fast_connection_error_is_an_error():
     async with aiohttp.ClientSession() as session:
-        service = ZoomScribeFastSTTService(
+        service = ZoomHttpSTTService(
             api_key="test-key", url="http://127.0.0.1:9/transcribe", aiohttp_session=session
         )
         [frame] = [f async for f in service.run_stt(b"RIFF0000WAVE")]
@@ -1123,11 +1119,11 @@ async def test_fast_connection_error_is_an_error():
 @pytest.mark.asyncio
 async def test_fast_closes_only_a_session_it_created():
     async with aiohttp.ClientSession() as injected:
-        service = ZoomScribeFastSTTService(api_key="test-key", aiohttp_session=injected)
+        service = ZoomHttpSTTService(api_key="test-key", aiohttp_session=injected)
         await service.cleanup()
         assert not injected.closed
 
-    service = ZoomScribeFastSTTService(api_key="test-key")
+    service = ZoomHttpSTTService(api_key="test-key")
     service._session = aiohttp.ClientSession()
     created = service._session
     await service.cleanup()
@@ -1139,7 +1135,7 @@ async def test_fast_channel_separation_is_requested_only_when_on():
     off, on = _ScribeFast(body=_FAST_RESULT), _ScribeFast(body=_FAST_RESULT)
 
     await _run_fast(off)
-    await _run_fast(on, settings=ZoomScribeFastSTTService.Settings(channel_separation=True))
+    await _run_fast(on, settings=ZoomHttpSTTService.Settings(channel_separation=True))
 
     assert "channel_separation" not in off.requests[0]["config"]
     assert on.requests[0]["config"]["channel_separation"] is True

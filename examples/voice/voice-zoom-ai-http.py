@@ -24,7 +24,7 @@ from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.services.zoom_ai.stt import ZoomScribeFastSTTService
+from pipecat.services.zoom_ai.stt import ZoomHttpSTTService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams
 from pipecat.transports.livekit.transport import LiveKitParams
@@ -63,7 +63,7 @@ transport_params = {
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info("Starting bot")
 
-    stt = ZoomScribeFastSTTService(api_key=os.environ["ZOOM_SCRIBE_API_KEY"])
+    stt = ZoomHttpSTTService(api_key=os.environ["ZOOM_SCRIBE_API_KEY"])
 
     tts = CartesiaTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],

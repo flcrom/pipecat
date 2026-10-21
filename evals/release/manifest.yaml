@@ -160,7 +160,7 @@ suite:
     scenarios: [scripted/capital_question]
   - bot: voice/voice-zoom-ai.py
     scenarios: [scripted/capital_question]
-  - bot: voice/voice-zoom-ai-fast.py
+  - bot: voice/voice-zoom-ai-http.py
     scenarios: [scripted/capital_question]
 
   #
